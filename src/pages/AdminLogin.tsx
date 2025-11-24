@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { Lock, User, AlertCircle } from "lucide-react";
+import { Lock, User, AlertCircle, Mail } from "lucide-react";
 
 export const AdminLogin: React.FC = () => {
   const navigate = useNavigate();
-  const [userId, setUserId] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -15,43 +16,44 @@ export const AdminLogin: React.FC = () => {
     setLoading(true);
 
     try {
-      // Check if user ID exists in admin_roles table
-      const { data: adminRole, error: adminError } = await supabase
-        .from("admin_roles")
-        .select("user_id, is_admin")
-        .eq("user_id", userId.trim())
-        .eq("is_admin", true)
-        .maybeSingle();
-
-      if (adminError) {
-        throw new Error("Error checking admin status");
-      }
-
-      if (!adminRole) {
-        setError("Invalid user ID or you are not an admin");
-        setLoading(false);
-        return;
-      }
-
-      // Get user profile
+      // First, get the email from username
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", userId.trim())
+        .eq("username", username.trim())
         .maybeSingle();
 
       if (profileError || !profile) {
-        setError("User profile not found");
+        setError("Invalid username or password");
         setLoading(false);
         return;
       }
 
-      // Store admin session in localStorage
-      localStorage.setItem("admin_user", JSON.stringify({
-        user_id: profile.id,
-        username: profile.username,
-        is_admin: true
-      }));
+      // Check if user is an admin
+      const { data: adminRole, error: adminError } = await supabase
+        .from("admin_roles")
+        .select("user_id, is_admin")
+        .eq("user_id", profile.id)
+        .eq("is_admin", true)
+        .maybeSingle();
+
+      if (adminError || !adminRole) {
+        setError("You do not have admin privileges");
+        setLoading(false);
+        return;
+      }
+
+      // Authenticate with Supabase using email and password
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: profile.email,
+        password: password,
+      });
+
+      if (authError) {
+        setError("Invalid username or password");
+        setLoading(false);
+        return;
+      }
 
       // Navigate to admin dashboard
       navigate("/admin/dashboard");
@@ -82,24 +84,39 @@ export const AdminLogin: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="userId" className="block text-sm font-medium text-gray-700 mb-2">
-              Admin User ID
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+              Username
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                id="userId"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your UUID"
+                placeholder="Enter your username"
                 required
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Enter your admin user ID (UUID format)
-            </p>
+          </div>
+
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="Enter your password"
+                required
+              />
+            </div>
           </div>
 
           <button

@@ -10,6 +10,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 type AuthContextType = {
   user: User | null;
+  profile: any | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
@@ -26,18 +27,44 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   // ✅ Load auth state on startup
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data }) => {
+      const currentUser = data.session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+        setProfile(profileData);
+      } else {
+        setProfile(null);
+      }
+
       setLoading(false);
     });
 
     // Listen to auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+        setProfile(profileData);
+      } else {
+        setProfile(null);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -60,6 +87,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   async function signOut() {
     await supabase.auth.signOut();
     setUser(null);
+    setProfile(null);
   }
 
   // OPTIONAL: simple admin check
@@ -71,6 +99,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
+        profile,
         loading,
         signIn,
         signOut,
